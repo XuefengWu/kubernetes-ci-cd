@@ -1,0 +1,54 @@
+node {
+
+    stage("Prepare appName"){
+        checkout scm
+
+        env.DOCKER_API_VERSION="1.23"
+        
+        sh "git rev-parse --short HEAD > commit-id"
+
+        tag = readFile('commit-id').replace("\n", "").replace("\r", "")
+        appName = "${params.app}"
+        registryHost = "127.0.0.1:30400/"
+        imageName = "${registryHost}${appName}:${tag}"
+        env.BUILDIMG=imageName
+    }
+    stage("Get app"){
+        echo app 
+        echo "echo app = $app"
+        print "DEBUG: parameter app = ${app}"
+        print "DEBUG: parameter params.app = ${params.app}"
+
+        sh "sed -e 's#__VERSION__#'$tag'#' applications/standard/${app}.html.tml >  applications/standard/${app}.html"
+    }
+    stage("Extract application tar"){}
+
+    stage("Verify application tar context"){}
+
+    stage("Generate app docker file"){                
+        sh "sed -e 's#__APP__#'$app'#' applications/standard/Dockerfile.tml >  applications/standard/Dockerfile"                
+    }
+
+    stage("Build"){
+    
+        sh "docker build -t ${imageName} -f applications/standard/Dockerfile applications/standard"
+    }
+    stage("Push"){
+
+        sh "docker push ${imageName}"
+    }
+    stage("Deploy to QA"){
+        sh "sed -e 's#__APP__#'${app}'#' applications/standard/k8s/deployment.yaml.tml > applications/standard/k8s/deployment.yaml.1"
+        sh "sed -e 's#__TAG__#'${tag}'#' applications/standard/k8s/deployment.yaml.1 > applications/standard/k8s/deployment.yaml"
+        sh "kubectl apply -f applications/standard/k8s/deployment.yaml"
+        sh "kubectl rollout status deployment/${app}"
+    }
+    stage("Verify"){
+        sh "kubectl get pods --all-namespaces"
+    }
+
+    stage("Deploy to Prod"){
+        
+    }
+    stage("Verify"){}
+}
